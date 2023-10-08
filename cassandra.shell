@@ -1,0 +1,11 @@
+# Connect to cassandra: cqlsh -u cassandra -p cassandra
+
+# Sport namespace definitions 
+CREATE KEYSPACE sport_streaming WITH replication = {'class':'SimpleStrategy','replication_factor':1};
+
+# Gpx-related table definitions
+CREATE TYPE sport_streaming.sample( elevation float, latitude float, longitude float, time int, speed float );
+CREATE TABLE sport_streaming.gpx( id text, name text, data list<frozen<sample>>, primary key(id) );
+
+# User-related table definitions
+CREATE TABLE sport_streaming.user( id text, name text, tracesCount int, createdAt text, primary key(id) );

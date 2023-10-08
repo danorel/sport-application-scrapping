@@ -1,18 +1,19 @@
 import typing as t
 
 
-class ScrappingFormat(t.TypedDict):
+class Gpx(t.TypedDict):
+    id: str
+    name: t.Optional[str]
+    data: t.Optional[str]
+
+
+class User(t.TypedDict):
+    id: str
+    name: str
+    tracesCount: float
+    createdAt: str
+
+
+class ReadyToExtractFormat(t.TypedDict):
     gpxURL: str
     userURL: str
-
-
-class ProcessingFormat(t.TypedDict):
-    user: t.TypedDict('User', {
-        'name': str
-        'traces': float,
-        'createdAt': str
-    })
-    gpx: t.TypedDict('GPX', {
-        'name': str,
-        'data': str
-    })
