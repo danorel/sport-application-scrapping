@@ -1,6 +1,6 @@
-# foobar
+# sport-application-scrapping
 
-foobar is a Python project for dealing with ...
+sport-application-scrapping is a Python project for dealing with scrapping of Sport data.
 
 ## Installation & Contributing
 

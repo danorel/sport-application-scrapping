@@ -1,0 +1,2 @@
+OPENSTREETMAP_BASE_URL = "https://www.openstreetmap.org"
+OPENSTREETMAP_TRACES_URL = f"{OPENSTREETMAP_BASE_URL}/traces"
