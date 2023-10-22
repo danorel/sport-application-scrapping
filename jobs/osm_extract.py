@@ -1,3 +1,4 @@
+import itertools
 import json
 import gpxpy
 import gpxpy.gpx
@@ -7,7 +8,7 @@ import uuid
 from bs4 import BeautifulSoup
 from kafka import KafkaConsumer, KafkaProducer
 
-from constants.formats import Gpx, ReadyToExtractFormat, ReadyToTransformLoadFormat, User
+from constants.formats import Gpx, GpxPoint, ReadyToExtractFormat, ReadyToTransformLoadFormat, User
 from constants.scrapping import OPENSTREETMAP_BASE_URL
 from constants.kafka import (
     READY_TO_EXTRACT_TOPIC,
@@ -29,6 +30,10 @@ kafka_producer = KafkaProducer(
 )
 
 
+def flatten(l2D: list[list]) -> list:
+    return list(itertools.chain(*l2D))
+
+
 def extract_gpx(html_url: str):
     html_doc = requests.get(html_url)
     soup = BeautifulSoup(html_doc.content, "html.parser")
@@ -42,18 +47,20 @@ def extract_gpx(html_url: str):
     gpx_file = requests.get(gpx_url, allow_redirects=True)
     try:
         gpx = gpxpy.parse(gpx_file.content)
+        segments = flatten([track.segments for track in gpx.tracks])
+        points = flatten([segment.points for segment in segments])
         return Gpx(
             id=str(uuid.uuid4()),
             name=gpx.name,
             data=[
-                dict(
-                    elevation=route.elevation,
-                    latitude=route.latitude,
-                    longitude=route.longitude,
-                    time=route.time,
-                    speed=route.speed,
+                GpxPoint(
+                    elevation=point.elevation,
+                    latitude=point.latitude,
+                    longitude=point.longitude,
+                    ISOString=point.time.isoformat(),
+                    speed=point.speed,
                 )
-                for route in gpx.routes
+                for point in points
             ]
         )
     except:
