@@ -25,14 +25,9 @@ python -m jobs.osm_scrap --html_pages=5
 python -m jobs.osm_extract
 ```
 
-3. Process and normalize the data from OpenStreetMap:
+3. Process and load the data from OpenStreetMap into Neo4j:
 ```zsh
-python -m jobs.osm_transform
-```
-
-4. Load the processed data from OpenStreetMap into Neo4j:
-```zsh
-python -m jobs.osm_load
+python -m jobs.osm_transform_load
 ```
 
 ## License

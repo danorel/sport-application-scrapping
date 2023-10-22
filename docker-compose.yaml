@@ -46,17 +46,16 @@ services:
     networks:
       - data-pipeline
 
-  cassandra:
-    image: 'docker.io/bitnami/cassandra:3-debian-10'
-    container_name: 'cassandra'
-    ports:
-      - '7001:7000'
-      - '9042:9042'
+  neo4j:
+    image: neo4j:latest
+        # map the ports so we can check the db server is up
+    container_name: neo4j
+    hostname: neo4j
+    ports: 
+      - "7474:7474"
+      - "7687:7687"
     environment:
-      - CASSANDRA_SEEDS=cassandra
-      - CASSANDRA_USER=user
-      - CASSANDRA_PASSWORD=cassandra
-      - CASSANDRA_PASSWORD_SEEDER=yes
+      - NEO4J_AUTH=none
     networks:
       - data-pipeline
 

@@ -17,3 +17,8 @@ class User(t.TypedDict):
 class ReadyToExtractFormat(t.TypedDict):
     gpxURL: str
     userURL: str
+
+
+class ReadyToTransformLoadFormat(t.TypedDict):
+    gpx: Gpx
+    user: User

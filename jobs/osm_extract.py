@@ -7,14 +7,13 @@ import uuid
 from bs4 import BeautifulSoup
 from kafka import KafkaConsumer, KafkaProducer
 
-from constants.formats import Gpx, ReadyToExtractFormat, User
+from constants.formats import Gpx, ReadyToExtractFormat, ReadyToTransformLoadFormat, User
 from constants.scrapping import OPENSTREETMAP_BASE_URL
 from constants.kafka import (
     READY_TO_EXTRACT_TOPIC,
-    READY_TO_TRANSFORM_LOAD_GPX_TOPIC,
-    READY_TO_TRANSFORM_LOAD_USER_TOPIC
+    READY_TO_TRANSFORM_LOAD_TOPIC,
 )
-from utils.kafka_streaming import deserialize, serialize
+from utils.kafka import deserialize, serialize
 from utils.logging import logger
 
 kafka_consumer = KafkaConsumer(
@@ -41,21 +40,24 @@ def extract_gpx(html_url: str):
     gpx_file_href = file_tr.find("a").get("href")
     gpx_url = f"{OPENSTREETMAP_BASE_URL}/{gpx_file_href}"
     gpx_file = requests.get(gpx_url, allow_redirects=True)
-    gpx = gpxpy.parse(gpx_file.content)
-    return Gpx(
-        id=str(uuid.uuid4()),
-        name=gpx.name,
-        data=[
-            dict(
-                elevation=route.elevation,
-                latitude=route.latitude,
-                longitude=route.longitude,
-                time=route.time,
-                speed=route.speed,
-            )
-            for route in gpx.routes
-        ]
-    )
+    try:
+        gpx = gpxpy.parse(gpx_file.content)
+        return Gpx(
+            id=str(uuid.uuid4()),
+            name=gpx.name,
+            data=[
+                dict(
+                    elevation=route.elevation,
+                    latitude=route.latitude,
+                    longitude=route.longitude,
+                    time=route.time,
+                    speed=route.speed,
+                )
+                for route in gpx.routes
+            ]
+        )
+    except:
+        return None
 
 
 def extract_user(html_url: str):
@@ -84,27 +86,27 @@ def extract_user(html_url: str):
     )
 
 
-def extract_data(ready_to_extract_format: ReadyToExtractFormat):
+def extract_data(ready_to_extract_format: ReadyToExtractFormat) -> ReadyToTransformLoadFormat:
     gpx_html_url, user_html_url = (
         ready_to_extract_format.get("gpxURL"),
         ready_to_extract_format.get("userURL"),
     )
-    data = (
-        extract_gpx(html_url=gpx_html_url),
-        extract_user(html_url=user_html_url),
-    )
-    return data
+    ready_to_transform_load_format = ReadyToTransformLoadFormat({
+        "gpx": extract_gpx(html_url=gpx_html_url),
+        "user": extract_user(html_url=user_html_url)
+    })
+    return ready_to_transform_load_format
 
 
-if __name__ == "__main__":
-    for kafka_message in kafka_consumer:
-        logger.info("%s:%d:%d: key=%s value=%s" % (
-            kafka_message.topic,
-            kafka_message.partition,
-            kafka_message.offset,
-            kafka_message.key,
-            json.dumps(kafka_message.value)
-        ))
-        gpx, user = extract_data(ReadyToExtractFormat(**kafka_message.value))
-        kafka_producer.send(READY_TO_TRANSFORM_LOAD_GPX_TOPIC, gpx)
-        kafka_producer.send(READY_TO_TRANSFORM_LOAD_USER_TOPIC, user)
+for kafka_message in kafka_consumer:
+    logger.info("%s:%d:%d: key=%s value=%s" % (
+        kafka_message.topic,
+        kafka_message.partition,
+        kafka_message.offset,
+        kafka_message.key,
+        json.dumps(kafka_message.value)
+    ))
+    ready_to_transform_load_format = extract_data(
+        ReadyToExtractFormat(**kafka_message.value))
+    kafka_producer.send(READY_TO_TRANSFORM_LOAD_TOPIC,
+                        ready_to_transform_load_format)

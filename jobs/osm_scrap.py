@@ -11,7 +11,7 @@ from constants.scrapping import (
     OPENSTREETMAP_BASE_URL,
     OPENSTREETMAP_TRACES_URL,
 )
-from utils.kafka_streaming import serialize
+from utils.kafka import serialize
 
 parser = argparse.ArgumentParser(
     prog='OpenStreetMapScrapper',
@@ -39,18 +39,19 @@ def scrap_data(soup: BeautifulSoup):
     for tr in soup.find_all("tr"):
         head_td, body_td, *rest_td = tr.find_all("td")
         gpx_a, user_a, *rest_a = body_td.find_all("a")
-        yield ReadyToExtractFormat(
+        read_to_extract_format = ReadyToExtractFormat(
             gpxURL=OPENSTREETMAP_BASE_URL + gpx_a.get("href"),
             userURL=OPENSTREETMAP_BASE_URL + user_a.get("href")
         )
+        yield read_to_extract_format
 
 
 html_url = OPENSTREETMAP_TRACES_URL
 for _ in tqdm(range(args.html_pages)):
     html_doc = requests.get(html_url)
     soup = BeautifulSoup(html_doc.content, "html.parser")
-    for data in scrap_data(soup):
-        kafka_producer.send(READY_TO_EXTRACT_TOPIC, data)
+    for read_to_extract_format in scrap_data(soup):
+        kafka_producer.send(READY_TO_EXTRACT_TOPIC, read_to_extract_format)
     html_href = scrap_pagination(soup)
     if not html_href:
         raise ValueError("Not found navigation element while scrapping")
