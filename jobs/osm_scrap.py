@@ -38,16 +38,16 @@ def scrap_pagination(soup: BeautifulSoup):
 def scrap_data(soup: BeautifulSoup):
     for tr in soup.find_all("tr"):
         head_td, body_td, *rest_td = tr.find_all("td")
-        gpx_a, user_a, *rest_a = body_td.find_all("a")
+        activity_a, athlete_a, *rest_a = body_td.find_all("a")
         read_to_extract_format = ReadyToExtractFormat(
-            gpxURL=OPENSTREETMAP_BASE_URL + gpx_a.get("href"),
-            userURL=OPENSTREETMAP_BASE_URL + user_a.get("href")
+            activityURL=OPENSTREETMAP_BASE_URL + activity_a.get("href"),
+            athleteURL=OPENSTREETMAP_BASE_URL + athlete_a.get("href")
         )
         yield read_to_extract_format
 
 
 html_url = OPENSTREETMAP_TRACES_URL
-for _ in tqdm(range(args.html_pages)):
+for _ in tqdm(range(args.html_pages + 1)):
     html_doc = requests.get(html_url)
     soup = BeautifulSoup(html_doc.content, "html.parser")
     for read_to_extract_format in scrap_data(soup):

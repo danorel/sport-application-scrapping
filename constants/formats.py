@@ -1,7 +1,7 @@
 import typing as t
 
 
-class GpxPoint(t.TypedDict):
+class ActivityMeasurement(t.TypedDict):
     elevation: t.Optional[float]
     latitude: t.Optional[float]
     longitude: t.Optional[float]
@@ -9,24 +9,23 @@ class GpxPoint(t.TypedDict):
     speed: t.Optional[float]
 
 
-class Gpx(t.TypedDict):
+class Activity(t.TypedDict):
     id: str
     name: t.Optional[str]
-    data: t.Optional[list[GpxPoint]]
+    classification: t.Optional[str]
+    data: t.Optional[list[ActivityMeasurement]]
 
 
-class User(t.TypedDict):
-    id: str
+class Athlete(t.TypedDict):
     name: str
-    tracesCount: float
     createdAt: str
 
 
 class ReadyToExtractFormat(t.TypedDict):
-    gpxURL: str
-    userURL: str
+    activityURL: str
+    athleteURL: str
 
 
 class ReadyToTransformLoadFormat(t.TypedDict):
-    gpx: Gpx
-    user: User
+    activity: Activity
+    athlete: Athlete
