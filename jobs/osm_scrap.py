@@ -12,6 +12,7 @@ from constants.scrapping import (
     OPENSTREETMAP_TRACES_URL,
 )
 from utils.kafka import serialize
+from utils.logging import logger
 
 parser = argparse.ArgumentParser(
     prog='OpenStreetMapScrapper',
@@ -28,22 +29,31 @@ kafka_producer = KafkaProducer(
 
 
 def scrap_pagination(soup: BeautifulSoup):
-    return (
-        soup.find("ul", attrs={"class": "pagination"})
-        .find("a", attrs={"class": "page-link"})
-        .get("href")
-    )
+    try:
+        pagination_elem = soup.find("ul", attrs={"class": "pagination"})
+        pagination_href = (
+            pagination_elem
+            .find("a", attrs={"class": "page-link"})
+            .get("href")
+        )
+        return pagination_href
+    except Exception as exception:
+        logger.error(f"Not found pagination due to error {str(exception)}")
+        return None
 
 
 def scrap_data(soup: BeautifulSoup):
     for tr in soup.find_all("tr"):
-        head_td, body_td, *rest_td = tr.find_all("td")
-        activity_a, athlete_a, *rest_a = body_td.find_all("a")
-        read_to_extract_format = ReadyToExtractFormat(
-            activityURL=OPENSTREETMAP_BASE_URL + activity_a.get("href"),
-            athleteURL=OPENSTREETMAP_BASE_URL + athlete_a.get("href")
-        )
-        yield read_to_extract_format
+        try:
+            head_td, body_td, *rest_td = tr.find_all("td")
+            activity_a, athlete_a, *rest_a = body_td.find_all("a")
+            read_to_extract_format = ReadyToExtractFormat(
+                activityURL=OPENSTREETMAP_BASE_URL + activity_a.get("href"),
+                athleteURL=OPENSTREETMAP_BASE_URL + athlete_a.get("href")
+            )
+            yield read_to_extract_format
+        except Exception as exception:
+            logger.error(f"Skipping {tr} due to error {str(exception)}")
 
 
 html_url = OPENSTREETMAP_TRACES_URL

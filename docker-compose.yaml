@@ -1,22 +1,6 @@
 version: '3'
 
 services:
-  spark:
-    image: 'docker.io/bitnami/spark:3'
-    container_name: spark
-    hostname: spark
-    user: root
-    environment:
-      - SPARK_MODE=master
-      - SPARK_RPC_AUTHENTICATION_ENABLED=no
-      - SPARK_RPC_ENCRYPTION_ENABLED=no
-      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
-      - SPARK_SSL_ENABLED=no
-    ports:
-      - '8080:8080'
-    networks:
-      - data-pipeline
-
   zookeeper:
     image: 'bitnami/zookeeper:latest'
     container_name: zookeeper
@@ -48,7 +32,6 @@ services:
 
   neo4j:
     image: neo4j:latest
-        # map the ports so we can check the db server is up
     container_name: neo4j
     hostname: neo4j
     ports: 

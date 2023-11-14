@@ -11,8 +11,6 @@ class ActivityMeasurement(t.TypedDict):
 
 class Activity(t.TypedDict):
     id: str
-    name: t.Optional[str]
-    classification: t.Optional[str]
     data: t.Optional[list[ActivityMeasurement]]
 
 

@@ -1,4 +1,3 @@
-import datetime as dt
 import json
 import gpxpy
 import gpxpy.gpx
@@ -8,19 +7,17 @@ import requests
 import traceback
 
 from bs4 import BeautifulSoup
+from copy import deepcopy
+from geopy.distance import geodesic
 from kafka import KafkaConsumer, KafkaProducer
 
-from constants.domain import (
-    MAX_CYCLING_LIMIT,
-    MAX_RUNNING_LIMIT,
-    MAX_WALKING_LIMIT,
-)
 from constants.formats import Activity, ActivityMeasurement, Athlete, ReadyToExtractFormat, ReadyToTransformLoadFormat
 from constants.scrapping import OPENSTREETMAP_BASE_URL
 from constants.kafka import (
     READY_TO_EXTRACT_TOPIC,
     READY_TO_TRANSFORM_LOAD_TOPIC,
 )
+from utils.date import isostring2datetime
 from utils.dict import flatten
 from utils.kafka import deserialize, serialize
 from utils.logging import logger
@@ -53,34 +50,7 @@ def mean_attr_or_none(activity_data: list[ActivityMeasurement], attr: str):
     return np.array(sequence).mean()
 
 
-def classify_by_activity_data(activity_data: list[ActivityMeasurement]):
-    mean_speed_in_meters_per_second = mean_attr_or_none(
-        activity_data, attr='speed')
-    if not mean_speed_in_meters_per_second:
-        return "other"
-    else:
-        if mean_speed_in_meters_per_second < MAX_WALKING_LIMIT:
-            return "walking"
-        elif mean_speed_in_meters_per_second < MAX_RUNNING_LIMIT:
-            return "running"
-        elif mean_speed_in_meters_per_second < MAX_CYCLING_LIMIT:
-            return "cycling"
-        else:
-            return "other"
-
-
-def isostring_no_microseconds(datetime: dt.datetime):
-    if not datetime:
-        return None
-    return datetime.replace(microsecond=0).isoformat(timespec="milliseconds")
-
-
-def interpolate_points(points, attrs: list[str] = ['elevation', 'latitude', 'longitude', 'time', 'speed']):
-    for point in points:
-        timestamp_no_microseconds = isostring_no_microseconds(
-            getattr(point, "time"))
-        if timestamp_no_microseconds:
-            setattr(point, "time", timestamp_no_microseconds)
+def interpolate_points(points, attrs: list[str] = ['elevation', 'latitude', 'longitude', 'time']):
     samples = []
     for point in points:
         sample = {}
@@ -119,6 +89,62 @@ def interpolate_points(points, attrs: list[str] = ['elevation', 'latitude', 'lon
     return interpolated_df.to_dict(orient="records")
 
 
+def calculate_speed_samples(coords, timestamps):
+    """
+    Calculate speed samples based on a sequence of coordinates and timestamps.
+
+    Parameters:
+    - coords: List of tuples containing (latitude, longitude) coordinates.
+    - timestamps: List of datetime objects representing timestamps for each coordinate.
+
+    Returns:
+    - List of speed samples (in km/h) between consecutive points.
+    """
+
+    # Ensure there are at least two points to calculate speed
+    if len(coords) < 2 or len(timestamps) < 2:
+        raise ValueError("Insufficient data points for speed calculation")
+
+    # Initialize an empty list to store speed samples
+    speed_samples = []
+
+    # Iterate through the coordinates and timestamps
+    for i in range(1, len(coords)):
+        # Extract information for the current and previous points
+        coord1 = coords[i - 1]
+        coord2 = coords[i]
+        time1 = timestamps[i - 1]
+        time2 = timestamps[i]
+
+        # Calculate distance using Haversine formula
+        distance = geodesic(coord1, coord2).kilometers
+
+        # Calculate time difference in hours
+        delta_time = (time2 - time1).total_seconds() / 3600.0
+
+        # Calculate speed in km/h and append to the list
+        speed = distance / delta_time
+        speed_samples.append(speed)
+
+    return speed_samples
+
+
+def enrich_activity_data(activity_data):
+    enriched_data = deepcopy(activity_data)
+
+    coordinate_samples, time_samples = (
+        [(x['latitude'], x['longitude']) for x in activity_data],
+        [isostring2datetime(x['ISOString']) for x in activity_data]
+    )
+
+    speed_samples = calculate_speed_samples(coordinate_samples, time_samples)
+
+    for sample, speed in zip(enriched_data, speed_samples):
+        sample['speed'] = speed
+
+    return enriched_data
+
+
 def extract_activity_data(gpx):
     tracks = gpx.tracks
     segments = flatten([track.segments for track in tracks])
@@ -145,10 +171,9 @@ def extract_activity(html_url: str):
         gpx_data = gpxpy.parse(gpx_file.content)
         gpx_id = gpx_href.split("/").pop(-2)
         activity_data = extract_activity_data(gpx_data)
+        activity_data = enrich_activity_data(activity_data)
         activity = Activity(
             id=gpx_id,
-            name=gpx_data.name,
-            classification=classify_by_activity_data(activity_data),
             data=activity_data
         )
         return filter_from_none(activity)
@@ -188,11 +213,16 @@ def extract_data(ready_to_extract_format: ReadyToExtractFormat) -> ReadyToTransf
         ready_to_extract_format["activityURL"],
         ready_to_extract_format["athleteURL"],
     )
-    ready_to_transform_load_format = ReadyToTransformLoadFormat(
-        activity=extract_activity(html_url=activity_html_url),
-        athlete=extract_athlete(html_url=athlete_html_url)
-    )
-    return ready_to_transform_load_format
+    try:
+        ready_to_transform_load_format = ReadyToTransformLoadFormat(
+            activity=extract_activity(html_url=activity_html_url),
+            athlete=extract_athlete(html_url=athlete_html_url)
+        )
+        return ready_to_transform_load_format
+    except Exception as exception:
+        logger.error(
+            f"Skipping {activity_html_url} due to error {str(exception)}")
+        return None
 
 
 for kafka_message in kafka_consumer:
@@ -205,5 +235,6 @@ for kafka_message in kafka_consumer:
     ))
     ready_to_transform_load_format = extract_data(
         ReadyToExtractFormat(**kafka_message.value))
-    kafka_producer.send(READY_TO_TRANSFORM_LOAD_TOPIC,
-                        ready_to_transform_load_format)
+    if ready_to_transform_load_format is not None:
+        kafka_producer.send(READY_TO_TRANSFORM_LOAD_TOPIC,
+                            ready_to_transform_load_format)

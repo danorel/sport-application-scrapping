@@ -25,10 +25,12 @@ RETURN at
 """
 
 
-def filter_keys(d: dict, unwanted_keys: list[str]):
+def compose_keys(d: dict, unwanted_keys: list[str] = [], wanted_keys: list[str] = []):
     f = d.copy()
     for unwanted_key in unwanted_keys:
         del f[unwanted_key]
+    for wanted_key in wanted_keys:
+        f[wanted_key] = None
     return f
 
 
@@ -67,12 +69,13 @@ def insert_data(tx, ready_to_transform_load_format: ReadyToTransformLoadFormat):
             response = query_result.single()
             activity_measurement_ids.append(response["activityMeasurementId"])
 
-        activity_params = filter_keys(activity, unwanted_keys=['id', 'data'])
+        activity_params = compose_keys(
+            activity,
+            unwanted_keys=['id', 'data']
+        )
         activity_stmt = make_dynamic_statement(activity_params)
         merge_activity_query = f"""
-            MERGE (ac:Activity {activity_stmt})
-            ON CREATE 
-                SET ac.HAS_DATA_IN = $activityMeasurementIds
+            CREATE (ac:Activity {activity_stmt})
             RETURN ID(ac) as activityId;
         """
         query_result = tx.run(
@@ -89,40 +92,40 @@ def insert_data(tx, ready_to_transform_load_format: ReadyToTransformLoadFormat):
         athlete_stmt = make_dynamic_statement(athlete)
         merge_athlete_query = f"""
             MERGE (at:Athlete {athlete_stmt})
-            ON CREATE 
-                SET at.TRACKS = $activityId
             RETURN ID(at) as athleteId;
         """
-        query_result = tx.run(
-            merge_athlete_query,
-            **{
-                **athlete_params,
-                "activityId": activity_id
-            }
-        )
+        query_result = tx.run(merge_athlete_query, athlete_params)
         response = query_result.single()
         athlete_id = response["athleteId"]
 
         activity_data_relationship_query = """
             MATCH (ac:Activity)
             MATCH (am:ActivityMeasurement)
-            WHERE (ID(ac) = $activityId AND ID(am) IN ac.HAS_DATA_IN)
-            MERGE (ac)-[:HAS_DATA_IN]->(am);
+            WHERE (ID(ac) = $activityId AND ID(am) IN $activityMeasurementIds)
+            CREATE (ac)-[:HAS_DATA_IN]->(am);
         """
-        tx.run(activity_data_relationship_query, activityId=activity_id)
+        tx.run(
+            activity_data_relationship_query,
+            activityId=activity_id,
+            activityMeasurementIds=activity_measurement_ids
+        )
 
         athlete_activity_relationship_query = """
             MATCH (at:Athlete)
             MATCH (ac:Activity)
-            WHERE (ID(at) = $athleteId AND ID(ac) = at.TRACKS)
-            MERGE (at)-[:TRACKS]->(ac);
+            WHERE (ID(at) = $athleteId AND ID(ac) = $activityId)
+            CREATE (at)-[:TRACKS]->(ac);
         """
-        tx.run(athlete_activity_relationship_query, athleteId=athlete_id)
+        tx.run(
+            athlete_activity_relationship_query,
+            activityId=activity_id,
+            athleteId=athlete_id
+        )
     else:
         athlete_params = athlete
         athlete_stmt = make_dynamic_statement(athlete)
         merge_athlete_query = f"""
-            MERGE (at:Athlete {athlete_stmt})
+            CREATE (at:Athlete {athlete_stmt})
             RETURN ID(at) as athleteId;
         """
         query_result = tx.run(
@@ -134,7 +137,6 @@ def insert_data(tx, ready_to_transform_load_format: ReadyToTransformLoadFormat):
 
 
 def transform_load_data(ready_to_transform_load_format: ReadyToTransformLoadFormat):
-    print(ready_to_transform_load_format)
     with neo4j_driver.session(database="neo4j") as session:
         session.execute_write(insert_data, ready_to_transform_load_format)
 
